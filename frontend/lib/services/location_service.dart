@@ -23,7 +23,7 @@ class LocationService {
     }
 
     return Geolocator.getCurrentPosition(
-      locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+      desiredAccuracy: LocationAccuracy.high,
     );
   }
 

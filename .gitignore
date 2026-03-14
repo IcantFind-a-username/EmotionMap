@@ -57,9 +57,11 @@ target/
 # Docker
 mysql_data/
 
-# Environment
+# Environment & API keys
 *.env
 .env.local
+frontend/web/index.html
+frontend/ios/Runner/AppDelegate.swift
 
 # OS
 Thumbs.db

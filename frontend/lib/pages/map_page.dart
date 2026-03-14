@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 import '../providers/emotion_provider.dart';
 import '../utils/constants.dart';
@@ -14,17 +15,9 @@ class MapPage extends StatefulWidget {
 }
 
 class _MapPageState extends State<MapPage> {
-  GoogleMapController? _mapController;
+  final MapController _mapController = MapController();
   Timer? _debounce;
-  LatLng _center = const LatLng(AppConstants.defaultLat, AppConstants.defaultLng);
-
-  static const _emotionHues = {
-    'HAPPY': BitmapDescriptor.hueGreen,
-    'SAD': BitmapDescriptor.hueBlue,
-    'ANGRY': BitmapDescriptor.hueRed,
-    'ANXIOUS': BitmapDescriptor.hueOrange,
-    'CALM': BitmapDescriptor.hueCyan,
-  };
+  LatLng _center = LatLng(AppConstants.defaultLat, AppConstants.defaultLng);
 
   static const _emotionColors = {
     'HAPPY': Colors.green,
@@ -37,15 +30,13 @@ class _MapPageState extends State<MapPage> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadData();
-    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadData());
   }
 
   @override
   void dispose() {
     _debounce?.cancel();
-    _mapController?.dispose();
+    _mapController.dispose();
     super.dispose();
   }
 
@@ -55,51 +46,56 @@ class _MapPageState extends State<MapPage> {
     provider.loadHeatmapData(_center.latitude, _center.longitude);
   }
 
-  void _onCameraIdle() {
-    _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 600), () {
-      _loadData();
-    });
+  void _onMapEvent(MapEvent event) {
+    if (event is MapEventMoveEnd) {
+      _center = event.camera.center;
+      _debounce?.cancel();
+      _debounce = Timer(const Duration(milliseconds: 600), () => _loadData());
+    }
   }
 
-  void _onCameraMove(CameraPosition pos) {
-    _center = pos.target;
-  }
-
-  Set<Marker> _buildMarkers(EmotionProvider provider) {
-    if (provider.showHeatmap) return {};
+  List<Marker> _buildMarkers(EmotionProvider provider) {
+    if (provider.showHeatmap) return [];
     return provider.nearbyEmotions.map((record) {
       final emoji = AppConstants.emotionEmojis[record.emotionType] ?? '❓';
-      final label = AppConstants.emotionLabels[record.emotionType] ?? record.emotionType;
-      final hue = _emotionHues[record.emotionType] ?? BitmapDescriptor.hueViolet;
+      final color = _emotionColors[record.emotionType] ?? Colors.grey;
 
       return Marker(
-        markerId: MarkerId('emotion_${record.id}'),
-        position: LatLng(record.latitude, record.longitude),
-        icon: BitmapDescriptor.defaultMarkerWithHue(hue),
-        infoWindow: InfoWindow(
-          title: '$emoji $label',
-          snippet: record.note ?? '',
+        point: LatLng(record.latitude, record.longitude),
+        width: 40,
+        height: 40,
+        child: Tooltip(
+          message: '${AppConstants.emotionLabels[record.emotionType] ?? record.emotionType}'
+              '${record.note != null && record.note!.isNotEmpty ? "\n${record.note}" : ""}',
+          child: Container(
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.9),
+              shape: BoxShape.circle,
+              boxShadow: [BoxShadow(color: color.withOpacity(0.4), blurRadius: 6, spreadRadius: 1)],
+            ),
+            child: Center(
+              child: Text(emoji, style: const TextStyle(fontSize: 20)),
+            ),
+          ),
         ),
       );
-    }).toSet();
+    }).toList();
   }
 
-  Set<Circle> _buildCircles(EmotionProvider provider) {
-    if (!provider.showHeatmap) return {};
+  List<CircleMarker> _buildHeatCircles(EmotionProvider provider) {
+    if (!provider.showHeatmap) return [];
     return provider.nearbyEmotions.map((record) {
       final isPositive = AppConstants.positiveEmotions.contains(record.emotionType);
       final color = isPositive ? Colors.green : Colors.red;
 
-      return Circle(
-        circleId: CircleId('heatmap_${record.id}'),
-        center: LatLng(record.latitude, record.longitude),
-        radius: 60,
-        fillColor: color.withOpacity(0.3),
-        strokeColor: color.withOpacity(0.6),
-        strokeWidth: 1,
+      return CircleMarker(
+        point: LatLng(record.latitude, record.longitude),
+        radius: 25,
+        color: color.withOpacity(0.3),
+        borderColor: color.withOpacity(0.6),
+        borderStrokeWidth: 1,
       );
-    }).toSet();
+    }).toList();
   }
 
   @override
@@ -121,16 +117,21 @@ class _MapPageState extends State<MapPage> {
       ),
       body: Stack(
         children: [
-          GoogleMap(
-            initialCameraPosition: CameraPosition(target: _center, zoom: 15),
-            onMapCreated: (controller) => _mapController = controller,
-            onCameraMove: _onCameraMove,
-            onCameraIdle: _onCameraIdle,
-            markers: _buildMarkers(provider),
-            circles: _buildCircles(provider),
-            myLocationEnabled: true,
-            myLocationButtonEnabled: true,
-            zoomControlsEnabled: false,
+          FlutterMap(
+            mapController: _mapController,
+            options: MapOptions(
+              initialCenter: _center,
+              initialZoom: 15,
+              onMapEvent: _onMapEvent,
+            ),
+            children: [
+              TileLayer(
+                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                userAgentPackageName: 'com.example.emotion_map',
+              ),
+              CircleLayer(circles: _buildHeatCircles(provider)),
+              MarkerLayer(markers: _buildMarkers(provider)),
+            ],
           ),
           if (provider.isLoading)
             Positioned(
@@ -143,7 +144,7 @@ class _MapPageState extends State<MapPage> {
                   decoration: BoxDecoration(
                     color: colorScheme.surface.withOpacity(0.9),
                     borderRadius: BorderRadius.circular(20),
-                    boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 8)],
+                    boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 8)],
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,

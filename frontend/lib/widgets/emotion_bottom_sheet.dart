@@ -118,30 +118,50 @@ class _EmotionSheetState extends State<_EmotionSheet> {
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: AppConstants.emotionEmojis.entries.map((entry) {
               final selected = _selectedEmotion == entry.key;
+              final emotionColor =
+                  AppConstants.emotionColors[entry.key] ?? colorScheme.primary;
               return GestureDetector(
                 onTap: () => setState(() => _selectedEmotion = entry.key),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 10, vertical: 10),
                   decoration: BoxDecoration(
-                    color: selected ? colorScheme.primaryContainer : Colors.transparent,
+                    color: selected
+                        ? emotionColor.withOpacity(0.15)
+                        : Colors.transparent,
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                      color: selected ? colorScheme.primary : Colors.transparent,
-                      width: 2,
+                      color: selected
+                          ? emotionColor
+                          : colorScheme.outlineVariant.withOpacity(0.4),
+                      width: selected ? 2 : 1,
                     ),
+                    boxShadow: selected
+                        ? [
+                            BoxShadow(
+                              color: emotionColor.withOpacity(0.25),
+                              blurRadius: 10,
+                              spreadRadius: 1,
+                            )
+                          ]
+                        : null,
                   ),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(entry.value, style: const TextStyle(fontSize: 32)),
+                      Text(entry.value, style: const TextStyle(fontSize: 30)),
                       const SizedBox(height: 4),
                       Text(
                         AppConstants.emotionLabels[entry.key] ?? '',
                         style: TextStyle(
                           fontSize: 11,
-                          fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
-                          color: selected ? colorScheme.primary : colorScheme.onSurfaceVariant,
+                          fontWeight: selected
+                              ? FontWeight.w700
+                              : FontWeight.normal,
+                          color: selected
+                              ? emotionColor
+                              : colorScheme.onSurfaceVariant,
                         ),
                       ),
                     ],

@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../providers/emotion_provider.dart';
 import '../utils/constants.dart';
 import '../widgets/emotion_bottom_sheet.dart';
+import '../widgets/emotion_detail_sheet.dart';
 
 class MapPage extends StatefulWidget {
   const MapPage({super.key});
@@ -18,14 +19,6 @@ class _MapPageState extends State<MapPage> {
   final MapController _mapController = MapController();
   Timer? _debounce;
   LatLng _center = LatLng(AppConstants.defaultLat, AppConstants.defaultLng);
-
-  static const _emotionColors = {
-    'HAPPY': Colors.green,
-    'SAD': Colors.blue,
-    'ANGRY': Colors.red,
-    'ANXIOUS': Colors.orange,
-    'CALM': Colors.teal,
-  };
 
   @override
   void initState() {
@@ -50,7 +43,8 @@ class _MapPageState extends State<MapPage> {
     if (event is MapEventMoveEnd) {
       _center = event.camera.center;
       _debounce?.cancel();
-      _debounce = Timer(const Duration(milliseconds: 600), () => _loadData());
+      _debounce =
+          Timer(const Duration(milliseconds: 600), () => _loadData());
     }
   }
 
@@ -58,23 +52,36 @@ class _MapPageState extends State<MapPage> {
     if (provider.showHeatmap) return [];
     return provider.nearbyEmotions.map((record) {
       final emoji = AppConstants.emotionEmojis[record.emotionType] ?? '❓';
-      final color = _emotionColors[record.emotionType] ?? Colors.grey;
+      final color =
+          AppConstants.emotionColors[record.emotionType] ?? Colors.grey;
+      final label = AppConstants.emotionLabels[record.emotionType] ??
+          record.emotionType;
 
       return Marker(
         point: LatLng(record.latitude, record.longitude),
-        width: 40,
-        height: 40,
-        child: Tooltip(
-          message: '${AppConstants.emotionLabels[record.emotionType] ?? record.emotionType}'
-              '${record.note != null && record.note!.isNotEmpty ? "\n${record.note}" : ""}',
-          child: Container(
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.9),
-              shape: BoxShape.circle,
-              boxShadow: [BoxShadow(color: color.withOpacity(0.4), blurRadius: 6, spreadRadius: 1)],
-            ),
-            child: Center(
-              child: Text(emoji, style: const TextStyle(fontSize: 20)),
+        width: 44,
+        height: 44,
+        child: GestureDetector(
+          onTap: () => showEmotionDetailSheet(context, record),
+          child: Tooltip(
+            message: '$label'
+                '${record.note != null && record.note!.isNotEmpty ? "\n${record.note}" : ""}',
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+                border: Border.all(color: color, width: 2),
+                boxShadow: [
+                  BoxShadow(
+                    color: color.withOpacity(0.45),
+                    blurRadius: 8,
+                    spreadRadius: 1,
+                  ),
+                ],
+              ),
+              child: Center(
+                child: Text(emoji, style: const TextStyle(fontSize: 22)),
+              ),
             ),
           ),
         ),
@@ -84,15 +91,30 @@ class _MapPageState extends State<MapPage> {
 
   List<CircleMarker> _buildHeatCircles(EmotionProvider provider) {
     if (!provider.showHeatmap) return [];
-    return provider.nearbyEmotions.map((record) {
-      final isPositive = AppConstants.positiveEmotions.contains(record.emotionType);
-      final color = isPositive ? Colors.green : Colors.red;
+    final data = provider.heatmapData;
+    if (data.isEmpty) return [];
 
+    final weights = data
+        .map((p) => (p['weight'] as num?)?.toDouble() ?? 1.0)
+        .toList();
+    final maxWeight = weights.fold<double>(1, (a, b) => a > b ? a : b);
+
+    return data.map((p) {
+      final lat = (p['latitude'] as num).toDouble();
+      final lng = (p['longitude'] as num).toDouble();
+      final weight = (p['weight'] as num?)?.toDouble() ?? 1.0;
+      final emotion = p['dominantEmotion']?.toString() ?? 'HAPPY';
+      final color =
+          AppConstants.emotionColors[emotion] ?? Colors.grey;
+      final ratio = (weight / maxWeight).clamp(0.0, 1.0);
+      final radiusMeters = 40 + ratio * 120;
+      final alpha = 0.25 + ratio * 0.35;
       return CircleMarker(
-        point: LatLng(record.latitude, record.longitude),
-        radius: 25,
-        color: color.withOpacity(0.3),
-        borderColor: color.withOpacity(0.6),
+        point: LatLng(lat, lng),
+        radius: radiusMeters,
+        useRadiusInMeter: true,
+        color: color.withOpacity(alpha),
+        borderColor: color.withOpacity((alpha + 0.2).clamp(0.0, 0.85)),
         borderStrokeWidth: 1,
       );
     }).toList();
@@ -104,14 +126,36 @@ class _MapPageState extends State<MapPage> {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
         title: const Text('EmotionMap'),
         centerTitle: true,
+        backgroundColor: colorScheme.surface.withOpacity(0.85),
+        elevation: 0,
+        scrolledUnderElevation: 0,
         actions: [
           IconButton(
-            icon: Icon(provider.showHeatmap ? Icons.layers : Icons.layers_outlined),
             tooltip: provider.showHeatmap ? 'Show markers' : 'Show heatmap',
+            icon: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 250),
+              transitionBuilder: (child, anim) =>
+                  ScaleTransition(scale: anim, child: child),
+              child: Icon(
+                provider.showHeatmap
+                    ? Icons.local_fire_department
+                    : Icons.local_fire_department_outlined,
+                key: ValueKey(provider.showHeatmap),
+                color: provider.showHeatmap
+                    ? Colors.deepOrange
+                    : colorScheme.onSurface,
+              ),
+            ),
             onPressed: () => provider.toggleHeatmap(),
+          ),
+          IconButton(
+            tooltip: 'Refresh',
+            icon: const Icon(Icons.refresh),
+            onPressed: _loadData,
           ),
         ],
       ),
@@ -126,7 +170,8 @@ class _MapPageState extends State<MapPage> {
             ),
             children: [
               TileLayer(
-                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                urlTemplate:
+                    'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                 userAgentPackageName: 'com.example.emotion_map',
               ),
               CircleLayer(circles: _buildHeatCircles(provider)),
@@ -134,39 +179,21 @@ class _MapPageState extends State<MapPage> {
             ],
           ),
           if (provider.isLoading)
-            Positioned(
-              top: 8,
+            const Positioned(
+              top: 0,
               left: 0,
               right: 0,
-              child: Center(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: colorScheme.surface.withOpacity(0.9),
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 8)],
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: colorScheme.primary),
-                      ),
-                      const SizedBox(width: 8),
-                      const Text('Loading emotions...'),
-                    ],
-                  ),
-                ),
-              ),
+              child: LinearProgressIndicator(minHeight: 3),
             ),
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => showEmotionBottomSheet(context),
-        icon: const Icon(Icons.add),
+        icon: const Icon(Icons.add_reaction_outlined),
         label: const Text('How do you feel?'),
+        backgroundColor: colorScheme.primary,
+        foregroundColor: colorScheme.onPrimary,
+        elevation: 4,
       ),
     );
   }

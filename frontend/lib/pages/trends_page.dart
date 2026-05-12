@@ -12,13 +12,7 @@ class TrendsPage extends StatefulWidget {
 }
 
 class _TrendsPageState extends State<TrendsPage> {
-  static const _emotionColors = {
-    'HAPPY': Colors.green,
-    'SAD': Colors.blue,
-    'ANGRY': Colors.red,
-    'ANXIOUS': Colors.orange,
-    'CALM': Colors.teal,
-  };
+  Map<String, Color> get _emotionColors => AppConstants.emotionColors;
 
   @override
   void initState() {

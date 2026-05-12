@@ -1,3 +1,5 @@
+import 'package:flutter/material.dart';
+
 class AppConstants {
   static const String baseUrl = 'http://localhost:8080/api'; // Use 10.0.2.2 for Android emulator
 
@@ -20,6 +22,14 @@ class AppConstants {
     'ANGRY': 'Angry',
     'ANXIOUS': 'Anxious',
     'CALM': 'Calm',
+  };
+
+  static const Map<String, Color> emotionColors = {
+    'HAPPY': Color(0xFF4CAF50),
+    'SAD': Color(0xFF2196F3),
+    'ANGRY': Color(0xFFF44336),
+    'ANXIOUS': Color(0xFFFF9800),
+    'CALM': Color(0xFF9C27B0),
   };
 
   static const List<String> positiveEmotions = ['HAPPY', 'CALM'];

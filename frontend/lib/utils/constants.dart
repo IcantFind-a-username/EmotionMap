@@ -6,7 +6,9 @@ class AppConstants {
   // NTU campus center coordinates
   static const double defaultLat = 1.3483;
   static const double defaultLng = 103.6831;
-  static const double defaultRadius = 2000; // meters
+  // 8 km covers NTU campus + surrounding residential area (e.g. Boon Lay, Jurong West)
+  // so a user at home can still see campus emotions and vice versa.
+  static const double defaultRadius = 8000; // meters
 
   static const Map<String, String> emotionEmojis = {
     'HAPPY': '😊',

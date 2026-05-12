@@ -1,20 +1,25 @@
 import 'package:flutter/foundation.dart';
 import '../models/emotion_record.dart';
 import '../services/api_service.dart';
+import '../utils/constants.dart';
 
 class EmotionProvider extends ChangeNotifier {
   final ApiService _api = ApiService();
 
   List<EmotionRecord> nearbyEmotions = [];
+  List<EmotionRecord> myEmotions = [];
   List<Map<String, dynamic>> heatmapData = [];
   List<Map<String, dynamic>> trendData = [];
   bool isLoading = false;
+  bool isLoadingMyEmotions = false;
+  String? myEmotionsError;
   bool showHeatmap = false;
 
   final String? _token;
   EmotionProvider(this._token);
 
-  Future<void> loadNearbyEmotions(double lat, double lng, {double radius = 2000}) async {
+  Future<void> loadNearbyEmotions(double lat, double lng,
+      {double radius = AppConstants.defaultRadius}) async {
     isLoading = true;
     notifyListeners();
 
@@ -34,7 +39,8 @@ class EmotionProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> loadHeatmapData(double lat, double lng, {double radius = 2000}) async {
+  Future<void> loadHeatmapData(double lat, double lng,
+      {double radius = AppConstants.defaultRadius}) async {
     try {
       final response = await _api.get('/emotions/heatmap', params: {
         'lat': lat,
@@ -87,6 +93,10 @@ class EmotionProvider extends ChangeNotifier {
         'note': note,
       });
       await loadNearbyEmotions(lat, lng);
+      // Refresh personal history so the new record appears on the Profile page
+      // immediately, even though that page lives inside an IndexedStack and
+      // does not re-run initState() when the tab becomes visible.
+      await refreshMyEmotions();
       return true;
     } catch (e) {
       print('Failed to submit emotion: $e');
@@ -99,14 +109,26 @@ class EmotionProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<List<EmotionRecord>> loadUserEmotions() async {
+  Future<void> refreshMyEmotions() async {
+    isLoadingMyEmotions = true;
+    myEmotionsError = null;
+    notifyListeners();
     try {
       final response = await _api.get('/emotions/my');
-      final data = response.data['data'] as List<dynamic>;
-      return EmotionRecord.fromJsonList(data);
+      final data = response.data['data'] as List<dynamic>? ?? [];
+      myEmotions = EmotionRecord.fromJsonList(data);
     } catch (e) {
-      print('Failed to load user emotions: $e');
-      return [];
+      myEmotions = [];
+      myEmotionsError = e.toString();
     }
+    isLoadingMyEmotions = false;
+    notifyListeners();
+  }
+
+  void clearMyEmotions() {
+    myEmotions = [];
+    myEmotionsError = null;
+    isLoadingMyEmotions = false;
+    notifyListeners();
   }
 }

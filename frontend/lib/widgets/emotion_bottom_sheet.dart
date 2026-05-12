@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 import '../providers/emotion_provider.dart';
 import '../services/location_service.dart';
 import '../utils/constants.dart';
 
-void showEmotionBottomSheet(BuildContext context) {
-  showModalBottomSheet(
+Future<LatLng?> showEmotionBottomSheet(BuildContext context) {
+  return showModalBottomSheet<LatLng>(
     context: context,
     isScrollControlled: true,
     shape: const RoundedRectangleBorder(
@@ -78,7 +79,7 @@ class _EmotionSheetState extends State<_EmotionSheet> {
     final success = await provider.submitEmotion(_selectedEmotion!, _lat!, _lng!, note);
 
     if (mounted) {
-      Navigator.pop(context);
+      Navigator.pop(context, success ? LatLng(_lat!, _lng!) : null);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(success ? 'Emotion recorded! 🎉' : 'Failed to submit. Please try again.'),
         backgroundColor: success ? Colors.teal : Colors.red.shade400,

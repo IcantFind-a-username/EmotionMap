@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
+import '../providers/auth_provider.dart';
 import '../providers/emotion_provider.dart';
+import '../services/location_service.dart';
 import '../utils/constants.dart';
 import '../widgets/emotion_bottom_sheet.dart';
 import '../widgets/emotion_detail_sheet.dart';
@@ -17,13 +19,15 @@ class MapPage extends StatefulWidget {
 
 class _MapPageState extends State<MapPage> {
   final MapController _mapController = MapController();
+  final LocationService _locationService = LocationService();
   Timer? _debounce;
   LatLng _center = LatLng(AppConstants.defaultLat, AppConstants.defaultLng);
+  bool _locating = false;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadData());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _locateAndLoad(initial: true));
   }
 
   @override
@@ -39,12 +43,64 @@ class _MapPageState extends State<MapPage> {
     provider.loadHeatmapData(_center.latitude, _center.longitude);
   }
 
+  Future<void> _locateAndLoad({bool initial = false}) async {
+    setState(() => _locating = true);
+    try {
+      final pos = await _locationService.getCurrentLocation();
+      _center = LatLng(pos.latitude, pos.longitude);
+      try {
+        _mapController.move(_center, 15);
+      } catch (_) {
+        // Map not yet ready on the very first frame; initialCenter handles it.
+      }
+    } catch (_) {
+      // Fall back to whatever _center already is (default NTU on first run).
+    }
+    if (mounted) setState(() => _locating = false);
+    _loadData();
+  }
+
+  void _recenterToCampus() {
+    _center = LatLng(AppConstants.defaultLat, AppConstants.defaultLng);
+    try {
+      _mapController.move(_center, 15);
+    } catch (_) {}
+    _loadData();
+  }
+
   void _onMapEvent(MapEvent event) {
     if (event is MapEventMoveEnd) {
       _center = event.camera.center;
       _debounce?.cancel();
       _debounce =
           Timer(const Duration(milliseconds: 600), () => _loadData());
+    }
+  }
+
+  Future<void> _openEmotionSheet() async {
+    final auth = context.read<AuthProvider>();
+    if (!auth.isAuthenticated) {
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Sign in required'),
+          content: const Text(
+              'Please sign in to share your emotion. This keeps it linked to your profile.'),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx), child: const Text('OK')),
+          ],
+        ),
+      );
+      return;
+    }
+    final submittedAt = await showEmotionBottomSheet(context);
+    if (submittedAt != null && mounted) {
+      _center = submittedAt;
+      try {
+        _mapController.move(submittedAt, 15);
+      } catch (_) {}
+      _loadData();
     }
   }
 
@@ -153,7 +209,27 @@ class _MapPageState extends State<MapPage> {
             onPressed: () => provider.toggleHeatmap(),
           ),
           IconButton(
-            tooltip: 'Refresh',
+            tooltip: 'Center on NTU campus',
+            icon: const Icon(Icons.school_outlined),
+            onPressed: _recenterToCampus,
+          ),
+          IconButton(
+            tooltip: 'Recenter to my location',
+            icon: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 250),
+              child: _locating
+                  ? const SizedBox(
+                      key: ValueKey('loading'),
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.my_location, key: ValueKey('locate')),
+            ),
+            onPressed: _locating ? null : () => _locateAndLoad(),
+          ),
+          IconButton(
+            tooltip: 'Refresh data',
             icon: const Icon(Icons.refresh),
             onPressed: _loadData,
           ),
@@ -188,7 +264,7 @@ class _MapPageState extends State<MapPage> {
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => showEmotionBottomSheet(context),
+        onPressed: _openEmotionSheet,
         icon: const Icon(Icons.add_reaction_outlined),
         label: const Text('How do you feel?'),
         backgroundColor: colorScheme.primary,

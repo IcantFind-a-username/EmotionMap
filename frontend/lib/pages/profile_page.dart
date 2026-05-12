@@ -15,24 +15,16 @@ class ProfilePage extends StatefulWidget {
 }
 
 class _ProfilePageState extends State<ProfilePage> {
-  List<EmotionRecord> _history = [];
-  bool _loading = true;
-
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadHistory());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) context.read<EmotionProvider>().refreshMyEmotions();
+    });
   }
 
   Future<void> _loadHistory() async {
-    setState(() => _loading = true);
-    final records = await context.read<EmotionProvider>().loadUserEmotions();
-    if (mounted) {
-      setState(() {
-        _history = records;
-        _loading = false;
-      });
-    }
+    await context.read<EmotionProvider>().refreshMyEmotions();
   }
 
   Future<void> _logout() async {
@@ -48,6 +40,7 @@ class _ProfilePageState extends State<ProfilePage> {
       ),
     );
     if (confirmed == true && mounted) {
+      context.read<EmotionProvider>().clearMyEmotions();
       await context.read<AuthProvider>().logout();
       if (mounted) {
         Navigator.pushAndRemoveUntil(
@@ -71,8 +64,12 @@ class _ProfilePageState extends State<ProfilePage> {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
+    final emotionProvider = context.watch<EmotionProvider>();
     final colorScheme = Theme.of(context).colorScheme;
     final username = auth.currentUser?.username ?? 'User';
+    final history = emotionProvider.myEmotions;
+    final loading = emotionProvider.isLoadingMyEmotions;
+    final error = emotionProvider.myEmotionsError;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Profile'), centerTitle: true),
@@ -97,7 +94,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   Text(username, style: Theme.of(context).textTheme.titleLarge),
                   const SizedBox(height: 4),
                   Text(
-                    '${_history.length} emotion${_history.length == 1 ? '' : 's'} shared',
+                    '${history.length} emotion${history.length == 1 ? '' : 's'} shared',
                     style: TextStyle(color: colorScheme.outline),
                   ),
                 ],
@@ -110,9 +107,29 @@ class _ProfilePageState extends State<ProfilePage> {
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
             const SizedBox(height: 12),
 
-            if (_loading)
+            if (loading)
               const Center(child: Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator()))
-            else if (_history.isEmpty)
+            else if (error != null)
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(32),
+                  child: Column(
+                    children: [
+                      Icon(Icons.error_outline, size: 48, color: Colors.red),
+                      const SizedBox(height: 8),
+                      Text('Failed to load history',
+                          style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600)),
+                      const SizedBox(height: 4),
+                      Text(error,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontSize: 12, color: colorScheme.outline)),
+                      const SizedBox(height: 12),
+                      FilledButton.tonal(onPressed: _loadHistory, child: const Text('Retry')),
+                    ],
+                  ),
+                ),
+              )
+            else if (history.isEmpty)
               Center(
                 child: Padding(
                   padding: const EdgeInsets.all(32),
@@ -126,7 +143,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 ),
               )
             else
-              ..._history.map((record) => _buildRecordCard(record, colorScheme)),
+              ...history.map((record) => _buildRecordCard(record, colorScheme)),
 
             const SizedBox(height: 32),
 
